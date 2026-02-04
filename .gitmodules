@@ -1,0 +1,3 @@
+[submodule "wsl-vpnkit"]
+	path = wsl-vpnkit
+	url = https://github.com/sakai135/wsl-vpnkit.git

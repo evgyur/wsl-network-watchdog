@@ -6,6 +6,26 @@ A Windows PowerShell script that monitors WSL (Windows Subsystem for Linux) netw
 
 ---
 
+## WSL networking stack (two parts)
+
+This repo includes two pieces that work together on Windows + WSL:
+
+| Part | Role |
+|------|------|
+| **[wsl-vpnkit](wsl-vpnkit/)** (submodule) | Gives WSL 2 network when the Windows host is on VPN. Uses [gvisor-tap-vsock](https://github.com/containers/gvisor-tap-vsock); no admin or VPN settings on Windows. Set up once (distro or standalone + systemd), then WSL has internet through VPN. |
+| **This watchdog** | Detects when WSL has lost network (sleep, VPN toggle, Windows update) and runs `wsl --shutdown` to restore it. Runs every 2 minutes as a scheduled task. |
+
+**Typical setup:** Install and run **wsl-vpnkit** in WSL (see [wsl-vpnkit/README.md](wsl-vpnkit/README.md)) so that WSL works over VPN. Then install **this watchdog** on Windows so that if the network still drops, WSL is restarted automatically and comes back with connectivity.
+
+To clone with the submodule:
+```powershell
+git clone --recurse-submodules https://github.com/evgyur/wsl-network-watchdog.git
+# or, if already cloned:
+git submodule update --init --recursive
+```
+
+---
+
 ## Requirements
 
 - **Windows 10/11** with WSL 2
@@ -61,10 +81,11 @@ cd C:\wsl-watchdog
 
 ---
 
-## Scripts
+## Repo contents
 
-| File | Purpose |
+| Item | Purpose |
 |------|---------|
+| `wsl-vpnkit/` | **Submodule** — [sakai135/wsl-vpnkit](https://github.com/sakai135/wsl-vpnkit): WSL 2 network over VPN. See [wsl-vpnkit/README.md](wsl-vpnkit/README.md) for setup. |
 | `wsl-network-watchdog.ps1` | Main script: checks WSL network, restarts WSL if needed, optionally starts/restarts a gateway service. |
 | `wsl-network-watchdog-install-task.ps1` | Installs or removes the three scheduled tasks. |
 | `wsl-network-watchdog-run-hidden.vbs` | Helper: run the main script with no window (path inside is updated when you run the installer). |
