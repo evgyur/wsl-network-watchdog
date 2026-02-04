@@ -15,7 +15,7 @@ This repo includes two pieces that work together on Windows + WSL:
 | **[wsl-vpnkit](wsl-vpnkit/)** (submodule) | Gives WSL 2 network when the Windows host is on VPN. Uses [gvisor-tap-vsock](https://github.com/containers/gvisor-tap-vsock); no admin or VPN settings on Windows. Set up once (distro or standalone + systemd), then WSL has internet through VPN. |
 | **This watchdog** | Detects when WSL has lost network (sleep, VPN toggle, Windows update) and runs `wsl --shutdown` to restore it. Runs every 2 minutes as a scheduled task. |
 
-**Typical setup:** Install and run **wsl-vpnkit** in WSL (see [wsl-vpnkit/README.md](wsl-vpnkit/README.md)) so that WSL works over VPN. Then install **this watchdog** on Windows so that if the network still drops, WSL is restarted automatically and comes back with connectivity.
+**Typical setup:** Install and run **wsl-vpnkit** in WSL (see [wsl-vpnkit/README.md](wsl-vpnkit/README.md)) so that WSL works over VPN. Then install **this watchdog** on Windows so that if the network still drops, WSL is restarted automatically and comes back with connectivity. The watchdog can also **check and restart wsl-vpnkit** if it crashes — use `-VpnkitServiceName "wsl-vpnkit"` (and passwordless `sudo systemctl` in WSL).
 
 To clone with the submodule:
 ```powershell
@@ -109,7 +109,8 @@ Run once (e.g. for testing):
 | `-FailuresBeforeRestart` | 2 | Consecutive failures before running `wsl --shutdown`. |
 | `-CheckUrl` | `https://api.telegram.org` | URL used to test connectivity from WSL (should return 200 or 302). |
 | `-LogPath` | same folder, `wsl-network-watchdog.log` | Log file path. |
-| `-GatewayServiceName` | `openclaw-gateway` | systemd user service name in WSL to start/restart. Use `""` to disable gateway logic. |
+| `-GatewayServiceName` | `openclaw-gateway` | systemd **user** service name in WSL to start/restart. Use `""` to disable gateway logic. |
+| `-VpnkitServiceName` | `""` | systemd **system** service name in WSL (e.g. `wsl-vpnkit`) to start/restart when it crashes. Use `""` to skip. Requires passwordless `sudo systemctl` in WSL. |
 
 Examples:
 
@@ -122,6 +123,9 @@ Examples:
 
 # Different gateway service name
 .\wsl-network-watchdog.ps1 -GatewayServiceName "my-bot.service"
+
+# Also check and restart wsl-vpnkit (system service) when it crashes
+.\wsl-network-watchdog.ps1 -VpnkitServiceName "wsl-vpnkit"
 ```
 
 ### Install script (`wsl-network-watchdog-install-task.ps1`)
@@ -157,6 +161,9 @@ No credentials or secrets are stored in the repository. The installer may ask fo
 
 - **No gateway / different service name**  
   Use `-GatewayServiceName ""` to disable gateway logic, or pass your service name when running the script. The scheduled task runs the script without extra parameters, so to change the gateway name for the scheduled task you would need to edit the task action in Task Scheduler and add `-GatewayServiceName "your-service"` to the PowerShell command line.
+
+- **wsl-vpnkit: keep it running**  
+  The [wsl-vpnkit](wsl-vpnkit/) service file has `Restart=always`, so systemd will restart it if it crashes. To have **this watchdog** also check and restart wsl-vpnkit every run (e.g. after WSL wake), add `-VpnkitServiceName "wsl-vpnkit"` to the task. That uses `sudo systemctl start/restart wsl-vpnkit` in WSL — configure [passwordless sudo](https://github.com/sakai135/wsl-vpnkit#setup-systemd) for `systemctl` so the watchdog can restart it without prompting.
 
 ---
 

@@ -12,7 +12,8 @@ param(
     [int]$FailuresBeforeRestart = 2,
     [string]$CheckUrl = "https://api.telegram.org",
     [string]$LogPath = "",
-    [string]$GatewayServiceName = "openclaw-gateway"
+    [string]$GatewayServiceName = "openclaw-gateway",
+    [string]$VpnkitServiceName = ""
 )
 
 $ErrorActionPreference = "Continue"
@@ -68,6 +69,9 @@ function Restart-Wsl {
         if ($GatewayServiceName) {
             wsl -e bash -c "systemctl --user start $GatewayServiceName 2>/dev/null; exit 0" 2>$null
         }
+        if ($VpnkitServiceName) {
+            wsl -e bash -c "sudo -n systemctl start $VpnkitServiceName 2>/dev/null; exit 0" 2>$null
+        }
         Set-PersistedFailures 0
         return $true
     }
@@ -98,6 +102,27 @@ function Restart-Gateway {
     wsl -e bash -lc "systemctl --user restart $GatewayServiceName 2>/dev/null; exit 0" 2>$null
 }
 
+# Ensure wsl-vpnkit (system) service is running in WSL. Uses sudo -n (no prompt); skip if empty or sudo fails.
+function Ensure-VpnkitStarted {
+    if (-not $VpnkitServiceName) { return }
+    wsl -e bash -c "sudo -n systemctl start $VpnkitServiceName 2>/dev/null; exit 0" 2>$null
+}
+
+function Test-VpnkitRunning {
+    if (-not $VpnkitServiceName) { return $true }
+    try {
+        $status = wsl -e bash -c "sudo -n systemctl is-active $VpnkitServiceName 2>/dev/null" 2>$null
+        return ($status -eq "active")
+    } catch {
+        return $false
+    }
+}
+
+function Restart-Vpnkit {
+    if (-not $VpnkitServiceName) { return }
+    wsl -e bash -c "sudo -n systemctl restart $VpnkitServiceName 2>/dev/null; exit 0" 2>$null
+}
+
 # Single check (uses persisted failure count for scheduled-task runs)
 function Invoke-OneCheck {
     $Script:ConsecutiveFailures = Get-PersistedFailures
@@ -113,6 +138,12 @@ function Invoke-OneCheck {
             Write-WatchdogLog "Gateway ($GatewayServiceName) not active; restarting." "WARN"
             Restart-Gateway
         }
+        # Optional: ensure wsl-vpnkit (system service) is running
+        Ensure-VpnkitStarted
+        if ($VpnkitServiceName -and -not (Test-VpnkitRunning)) {
+            Write-WatchdogLog "Vpnkit ($VpnkitServiceName) not active; restarting (needs passwordless sudo in WSL)." "WARN"
+            Restart-Vpnkit
+        }
         return
     }
     $Script:ConsecutiveFailures++
@@ -123,7 +154,7 @@ function Invoke-OneCheck {
     }
 }
 
-Write-WatchdogLog "Watchdog started. CheckUrl=$CheckUrl Interval=${CheckIntervalSeconds}s FailuresBeforeRestart=$FailuresBeforeRestart Gateway=$GatewayServiceName Log=$LogPath"
+Write-WatchdogLog "Watchdog started. CheckUrl=$CheckUrl Interval=${CheckIntervalSeconds}s FailuresBeforeRestart=$FailuresBeforeRestart Gateway=$GatewayServiceName Vpnkit=$VpnkitServiceName Log=$LogPath"
 Invoke-OneCheck
 
 if (-not $Daemon) {
