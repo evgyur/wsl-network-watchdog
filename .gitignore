@@ -1,0 +1,3 @@
+# Log and state files (local, may contain paths)
+wsl-network-watchdog.log
+wsl-network-watchdog.state
