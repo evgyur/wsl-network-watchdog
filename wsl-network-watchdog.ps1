@@ -72,6 +72,8 @@ function Restart-Wsl {
         if ($VpnkitServiceName) {
             wsl -e bash -c "sudo -n systemctl start $VpnkitServiceName 2>/dev/null; exit 0" 2>$null
         }
+        Start-Sleep -Seconds 2
+        Ensure-VpnkitDistroStarted
         Set-PersistedFailures 0
         return $true
     }
@@ -123,6 +125,21 @@ function Restart-Vpnkit {
     wsl -e bash -c "sudo -n systemctl restart $VpnkitServiceName 2>/dev/null; exit 0" 2>$null
 }
 
+# Ensure wsl-vpnkit distro is running (VPN network for WSL). Starts it in background if Stopped.
+function Ensure-VpnkitDistroStarted {
+    try {
+        $list = wsl -l -v 2>&1 | Out-String
+        if ($list -match 'wsl-vpnkit\s+Running') { return }
+        $startScript = Join-Path $PSScriptRoot "wsl-vpnkit-start.ps1"
+        if (Test-Path -LiteralPath $startScript) {
+            & $startScript
+        } else {
+            Start-Process -FilePath "wsl.exe" -ArgumentList "-d wsl-vpnkit", "--cd /app", "wsl-vpnkit" -WindowStyle Hidden -ErrorAction SilentlyContinue
+        }
+        Write-WatchdogLog "wsl-vpnkit distro was stopped; started in background." "WARN"
+    } catch { }
+}
+
 # Single check (uses persisted failure count for scheduled-task runs)
 function Invoke-OneCheck {
     $Script:ConsecutiveFailures = Get-PersistedFailures
@@ -144,6 +161,8 @@ function Invoke-OneCheck {
             Write-WatchdogLog "Vpnkit ($VpnkitServiceName) not active; restarting (needs passwordless sudo in WSL)." "WARN"
             Restart-Vpnkit
         }
+        # Ensure wsl-vpnkit distro is running (VPN network)
+        Ensure-VpnkitDistroStarted
         return
     }
     $Script:ConsecutiveFailures++

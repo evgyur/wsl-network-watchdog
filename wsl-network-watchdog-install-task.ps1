@@ -16,8 +16,11 @@ $TaskBase = "WSL Network Watchdog"
 $TaskStartup = "$TaskBase (Startup)"
 $TaskLogon = "$TaskBase (Logon)"
 $TaskRepeat = "$TaskBase (Every 2 min)"
+$TaskVpnkitLogon = "WSL VPNKit (Logon)"
 $ScriptDir = $PSScriptRoot
 $WatchdogScript = Join-Path $ScriptDir "wsl-network-watchdog.ps1"
+$VpnkitStartScript = Join-Path $ScriptDir "wsl-vpnkit-start.ps1"
+$VpnkitTr = "powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$VpnkitStartScript`""
 
 if (-not (Test-Path -LiteralPath $WatchdogScript)) {
     Write-Host "ERROR: Not found: $WatchdogScript" -ForegroundColor Red
@@ -40,6 +43,7 @@ function Remove-Tasks {
     $null = cmd /c "schtasks /Delete /TN `"$TaskStartup`" /F 2>nul"
     $null = cmd /c "schtasks /Delete /TN `"$TaskLogon`" /F 2>nul"
     $null = cmd /c "schtasks /Delete /TN `"$TaskRepeat`" /F 2>nul"
+    $null = cmd /c "schtasks /Delete /TN `"$TaskVpnkitLogon`" /F 2>nul"
 }
 
 if ($Uninstall) {
@@ -59,10 +63,12 @@ if ($RunWhenLocked) {
     schtasks /Create /TN $TaskStartup /TR $Tr /SC ONSTART /RU $env:USERNAME /RP $Pass /RL HIGHEST /DELAY 0001:00 /F 2>$null
     schtasks /Create /TN $TaskLogon /TR $Tr /SC ONLOGON /RU $env:USERNAME /RP $Pass /RL HIGHEST /F 2>$null
     schtasks /Create /TN $TaskRepeat /TR $TrHidden /SC MINUTE /MO 2 /RU $env:USERNAME /RP $Pass /RL HIGHEST /F 2>$null
-    Write-Host "Tasks installed (run when locked): at startup (1 min delay), at logon, every 2 min." -ForegroundColor Green
+    schtasks /Create /TN $TaskVpnkitLogon /TR $VpnkitTr /SC ONLOGON /RU $env:USERNAME /RP $Pass /RL HIGHEST /F 2>$null
+    Write-Host "Tasks installed (run when locked): at startup (1 min delay), at logon, every 2 min, VPNKit at logon." -ForegroundColor Green
 } else {
     schtasks /Create /TN $TaskStartup /TR $Tr /SC ONSTART /RU $env:USERNAME /DELAY 0001:00 /F 2>$null
     schtasks /Create /TN $TaskLogon /TR $Tr /SC ONLOGON /RU $env:USERNAME /F 2>$null
+    schtasks /Create /TN $TaskVpnkitLogon /TR $VpnkitTr /SC ONLOGON /RU $env:USERNAME /F 2>$null
     Write-Host "To run 'Every 2 min' WITHOUT a flashing window, the task must run in background (needs your Windows password once)." -ForegroundColor Yellow
     $PassRepeat = Read-Host "Enter your Windows password for 'Every 2 min' task (or press Enter to skip; window may flash every 2 min)"
     if ($PassRepeat -and $PassRepeat.Trim().Length -gt 0) {
