@@ -111,6 +111,7 @@ Run once (e.g. for testing):
 | `-LogPath` | same folder, `wsl-network-watchdog.log` | Log file path. |
 | `-GatewayServiceName` | `openclaw-gateway` | systemd **user** service name in WSL to start/restart. Use `""` to disable gateway logic. |
 | `-VpnkitServiceName` | `""` | systemd **system** service name in WSL (e.g. `wsl-vpnkit`) to start/restart when it crashes. Use `""` to skip. Requires passwordless `sudo systemctl` in WSL. |
+| `-WslDistroName` | `Ubuntu` | WSL distro name for the keepalive process (`wsl -d <name> sleep infinity`). Prevents WSL from auto-terminating due to idle timeout. Use `""` to disable. |
 
 Examples:
 
@@ -143,6 +144,7 @@ Examples:
 1. **Network check:** The script runs `wsl -e bash -c "curl ... $CheckUrl"`. That starts WSL if it is not running and tests outbound connectivity from inside WSL.
 2. **Failure count:** If the check fails, a failure count is stored in `wsl-network-watchdog.state`. If it reaches `FailuresBeforeRestart` (default 2), the script runs `wsl --shutdown`, waits 5 seconds, then checks again.
 3. **Gateway (optional):** If `GatewayServiceName` is set, after a successful network check the script ensures the service is started and, if it is not active, runs `systemctl --user restart $GatewayServiceName` in WSL.
+4. **WSL keepalive:** On Windows 11, WSL 2 auto-terminates the VM after `vmIdleTimeout` (default 60 seconds) if there is no active `wsl.exe` process on the Windows side — even if services are running inside WSL. The watchdog ensures a hidden `wsl -d <Distro> sleep infinity` process is always running, preventing the VM from shutting down. This runs at script startup and after every successful check or WSL restart.
 
 No credentials or secrets are stored in the repository. The installer may ask for your Windows password so that the "Every 2 min" task can run in the background; that password is stored only in Windows Task Scheduler for that task.
 
@@ -161,6 +163,9 @@ No credentials or secrets are stored in the repository. The installer may ask fo
 
 - **No gateway / different service name**  
   Use `-GatewayServiceName ""` to disable gateway logic, or pass your service name when running the script. The scheduled task runs the script without extra parameters, so to change the gateway name for the scheduled task you would need to edit the task action in Task Scheduler and add `-GatewayServiceName "your-service"` to the PowerShell command line.
+
+- **WSL keeps shutting down / services restart every 1–2 minutes**  
+  On Windows 11, WSL 2 shuts the VM down after 60 seconds of idle (no Windows-side `wsl.exe` process). The watchdog now auto-starts a hidden `wsl -d Ubuntu sleep infinity` keepalive to prevent this. If it still happens, create `%USERPROFILE%\.wslconfig` with `[wsl2]` and `vmIdleTimeout=-1` and restart WSL.
 
 - **wsl-vpnkit: keep it running**  
   The [wsl-vpnkit](wsl-vpnkit/) service file has `Restart=always`, so systemd will restart it if it crashes. To have **this watchdog** also check and restart wsl-vpnkit every run (e.g. after WSL wake), add `-VpnkitServiceName "wsl-vpnkit"` to the task. That uses `sudo systemctl start/restart wsl-vpnkit` in WSL — configure [passwordless sudo](https://github.com/sakai135/wsl-vpnkit#setup-systemd) for `systemctl` so the watchdog can restart it without prompting.

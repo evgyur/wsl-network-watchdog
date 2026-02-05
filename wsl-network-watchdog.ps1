@@ -13,7 +13,8 @@ param(
     [string]$CheckUrl = "https://api.telegram.org",
     [string]$LogPath = "",
     [string]$GatewayServiceName = "openclaw-gateway",
-    [string]$VpnkitServiceName = ""
+    [string]$VpnkitServiceName = "",
+    [string]$WslDistroName = "Ubuntu"
 )
 
 $ErrorActionPreference = "Continue"
@@ -74,6 +75,7 @@ function Restart-Wsl {
         }
         Start-Sleep -Seconds 2
         Ensure-VpnkitDistroStarted
+        Ensure-WslKeepalive
         Set-PersistedFailures 0
         return $true
     }
@@ -142,6 +144,26 @@ function Ensure-VpnkitDistroStarted {
     } catch { }
 }
 
+# Ensure a persistent "wsl -d <Distro> sleep infinity" process exists on the Windows side.
+# Without it, WSL 2 auto-terminates the VM after vmIdleTimeout (default 60 s on Win 11),
+# killing all services inside (gateway, bots, etc.) even though they are still running.
+function Ensure-WslKeepalive {
+    if (-not $WslDistroName) { return }
+    try {
+        $procs = Get-WmiObject Win32_Process -Filter "Name='wsl.exe'" -ErrorAction SilentlyContinue
+        foreach ($p in $procs) {
+            if ($p.CommandLine -and $p.CommandLine -match "-d\s+$([regex]::Escape($WslDistroName))\s+sleep\s+infinity") {
+                return  # already running
+            }
+        }
+        # No keepalive found — start one hidden
+        Start-Process -FilePath "wsl.exe" -ArgumentList "-d", $WslDistroName, "sleep", "infinity" -WindowStyle Hidden -ErrorAction Stop
+        Write-WatchdogLog "WSL keepalive started (wsl -d $WslDistroName sleep infinity)." "INFO"
+    } catch {
+        Write-WatchdogLog "Failed to start WSL keepalive: $_" "WARN"
+    }
+}
+
 # Single check (uses persisted failure count for scheduled-task runs)
 function Invoke-OneCheck {
     $Script:ConsecutiveFailures = Get-PersistedFailures
@@ -165,6 +187,8 @@ function Invoke-OneCheck {
         }
         # Ensure wsl-vpnkit distro is running (VPN network)
         Ensure-VpnkitDistroStarted
+        # Keep WSL VM alive so services don't get killed by idle timeout
+        Ensure-WslKeepalive
         return
     }
     $Script:ConsecutiveFailures++
@@ -175,7 +199,8 @@ function Invoke-OneCheck {
     }
 }
 
-Write-WatchdogLog "Watchdog started. CheckUrl=$CheckUrl Interval=${CheckIntervalSeconds}s FailuresBeforeRestart=$FailuresBeforeRestart Gateway=$GatewayServiceName Vpnkit=$VpnkitServiceName Log=$LogPath"
+Write-WatchdogLog "Watchdog started. CheckUrl=$CheckUrl Interval=${CheckIntervalSeconds}s FailuresBeforeRestart=$FailuresBeforeRestart Gateway=$GatewayServiceName Vpnkit=$VpnkitServiceName Distro=$WslDistroName Log=$LogPath"
+Ensure-WslKeepalive
 Invoke-OneCheck
 
 if (-not $Daemon) {
