@@ -128,7 +128,9 @@ function Restart-Vpnkit {
 # Ensure wsl-vpnkit distro is running (VPN network for WSL). Starts it in background if Stopped.
 function Ensure-VpnkitDistroStarted {
     try {
-        $list = wsl -l -v 2>&1 | Out-String
+        # wsl -l -v outputs UTF-16LE with null bytes; strip them to get ASCII
+        $raw = wsl -l -v 2>&1 | Out-String
+        $list = $raw -replace '\x00', ''
         if ($list -match 'wsl-vpnkit\s+Running') { return }
         $startScript = Join-Path $PSScriptRoot "wsl-vpnkit-start.ps1"
         if (Test-Path -LiteralPath $startScript) {
