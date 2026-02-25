@@ -61,8 +61,15 @@ function Restart-Wsl {
         Write-WatchdogLog "wsl --shutdown failed: $_" "ERROR"
         return $false
     }
-    Write-WatchdogLog "wsl --shutdown done. Waiting 5s..." "INFO"
-    Start-Sleep -Seconds 5
+    Write-WatchdogLog "wsl --shutdown done. Starting wsl-vpnkit and waiting 12s..." "INFO"
+    # Start wsl-vpnkit distro before checking network (needed when host is on VPN/AmneziaVPN)
+    $startScript = Join-Path $PSScriptRoot "wsl-vpnkit-start.ps1"
+    if (Test-Path -LiteralPath $startScript) {
+        & $startScript
+    } else {
+        Start-Process -FilePath "wsl.exe" -ArgumentList "-d wsl-vpnkit", "--cd /app", "wsl-vpnkit" -WindowStyle Hidden -ErrorAction SilentlyContinue
+    }
+    Start-Sleep -Seconds 12
     # Trigger WSL start and verify
     $check = wsl -e bash -c "curl -s -o /dev/null -w '%{http_code}' --connect-timeout 8 $CheckUrl" 2>$null
     if ($check -match "^(200|302)$") {
@@ -200,6 +207,8 @@ function Invoke-OneCheck {
 }
 
 Write-WatchdogLog "Watchdog started. CheckUrl=$CheckUrl Interval=${CheckIntervalSeconds}s FailuresBeforeRestart=$FailuresBeforeRestart Gateway=$GatewayServiceName Vpnkit=$VpnkitServiceName Distro=$WslDistroName Log=$LogPath"
+# Always ensure wsl-vpnkit distro is running before the first check (needed on VPN/AmneziaVPN)
+Ensure-VpnkitDistroStarted
 Ensure-WslKeepalive
 Invoke-OneCheck
 
